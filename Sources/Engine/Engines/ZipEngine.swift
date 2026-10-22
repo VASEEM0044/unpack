@@ -1,4 +1,5 @@
 import Foundation
+import Compression
 
 /// Pure-Swift streaming ZIP engine capable of reading Central Directory structures,
 /// extracting Deflate/Store entries in 64KB chunks, and creating ZIP archives.

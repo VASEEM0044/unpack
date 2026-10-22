@@ -33,25 +33,27 @@ public struct QuickLookPreview: UIViewControllerRepresentable {
         Coordinator(previewURL: previewItemURL, onDismiss: onDismiss)
     }
 
-    public class Coordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
+    public final class Coordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
         let previewURL: URL
-        let onDismiss: () -> Void
+        let onDismiss: @MainActor () -> Void
 
-        init(previewURL: URL, onDismiss: @escaping () -> Void) {
+        init(previewURL: URL, onDismiss: @escaping @MainActor () -> Void) {
             self.previewURL = previewURL
             self.onDismiss = onDismiss
         }
 
-        public func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+        nonisolated public func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
             1
         }
 
-        public func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+        nonisolated public func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
             previewURL as NSURL
         }
 
-        public func previewControllerDidDismiss(_ controller: QLPreviewController) {
-            onDismiss()
+        nonisolated public func previewControllerDidDismiss(_ controller: QLPreviewController) {
+            Task { @MainActor in
+                onDismiss()
+            }
         }
     }
 }

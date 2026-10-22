@@ -57,21 +57,25 @@ public struct DocumentPicker: UIViewControllerRepresentable {
         Coordinator(onPick: onPick, onCancel: onCancel)
     }
 
-    public class Coordinator: NSObject, UIDocumentPickerDelegate {
-        private let onPick: ([URL]) -> Void
-        private let onCancel: () -> Void
+    public final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        private let onPick: @MainActor ([URL]) -> Void
+        private let onCancel: @MainActor () -> Void
 
-        init(onPick: @escaping ([URL]) -> Void, onCancel: @escaping () -> Void) {
+        init(onPick: @escaping @MainActor ([URL]) -> Void, onCancel: @escaping @MainActor () -> Void) {
             self.onPick = onPick
             self.onCancel = onCancel
         }
 
-        public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            onPick(urls)
+        nonisolated public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            Task { @MainActor in
+                onPick(urls)
+            }
         }
 
-        public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            onCancel()
+        nonisolated public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            Task { @MainActor in
+                onCancel()
+            }
         }
     }
 }
