@@ -290,7 +290,7 @@ public final class TarEngine: ArchiveEngine, @unchecked Sendable {
             inData.withUnsafeBytes { inBuf in
                 compression_decode_buffer(
                     outBuf.bindMemory(to: UInt8.self).baseAddress!,
-                    decompressed.count,
+                    outBuf.count,
                     inBuf.bindMemory(to: UInt8.self).baseAddress!,
                     inData.count,
                     nil,
