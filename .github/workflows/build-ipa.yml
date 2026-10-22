@@ -14,19 +14,13 @@ concurrency:
 jobs:
   build-ipa:
     name: Build Unpack.ipa
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Select Highest Xcode Version (Xcode 16 / Swift 6)
+      - name: Print Xcode Version
         run: |
-          XCODE_APP=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode.app 2>/dev/null | head -n 1)
-          if [ -z "$XCODE_APP" ]; then
-            XCODE_APP=$(ls -d /Applications/Xcode_15*.app 2>/dev/null | head -n 1)
-          fi
-          echo "Selected Xcode: $XCODE_APP"
-          sudo xcode-select -switch "$XCODE_APP/Contents/Developer"
           xcodebuild -version
 
       - name: Install Tools
