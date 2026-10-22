@@ -144,45 +144,17 @@ public struct ArchiveBrowserView: View {
         ScrollView {
             LazyVStack(spacing: 4) {
                 ForEach(viewModel.displayedEntries) { entry in
-                    renderEntryNode(entry, depth: 0)
+                    EntryTreeNodeView(
+                        entry: entry,
+                        depth: 0,
+                        expandedPaths: $expandedPaths,
+                        viewModel: viewModel
+                    )
                 }
             }
             .padding(.horizontal, DesignTokens.Spacing.md)
             .padding(.top, DesignTokens.Spacing.sm)
             .padding(.bottom, 100) // Padding for floating action bar
-        }
-    }
-
-    @ViewBuilder
-    private func renderEntryNode(_ entry: ArchiveEntry, depth: Int) -> some View {
-        let isExpanded = expandedPaths.contains(entry.path)
-        
-        ArchiveEntryRow(
-            entry: entry,
-            isSelected: viewModel.selectedPaths.contains(entry.path),
-            isSelectionMode: viewModel.isSelectionMode,
-            isExpanded: isExpanded,
-            onToggleExpand: {
-                if isExpanded {
-                    expandedPaths.remove(entry.path)
-                } else {
-                    expandedPaths.insert(entry.path)
-                }
-            },
-            onToggleSelect: {
-                viewModel.toggleSelection(for: entry.path)
-            },
-            onPreview: {
-                // Trigger preview
-                viewModel.previewURL = viewModel.archiveURL
-            }
-        )
-        .padding(.leading, CGFloat(depth) * 18)
-
-        if isExpanded, let children = entry.children {
-            ForEach(children) { child in
-                renderEntryNode(child, depth: depth + 1)
-            }
         }
     }
 
@@ -264,4 +236,49 @@ public struct ArchiveBrowserView: View {
 private struct PreviewItem: Identifiable {
     let id = UUID()
     let url: URL
+}
+
+private struct EntryTreeNodeView: View {
+    let entry: ArchiveEntry
+    let depth: Int
+    @Binding var expandedPaths: Set<String>
+    let viewModel: ArchiveBrowserViewModel
+
+    var body: some View {
+        let isExpanded = expandedPaths.contains(entry.path)
+
+        VStack(spacing: 4) {
+            ArchiveEntryRow(
+                entry: entry,
+                isSelected: viewModel.selectedPaths.contains(entry.path),
+                isSelectionMode: viewModel.isSelectionMode,
+                isExpanded: isExpanded,
+                onToggleExpand: {
+                    if isExpanded {
+                        expandedPaths.remove(entry.path)
+                    } else {
+                        expandedPaths.insert(entry.path)
+                    }
+                },
+                onToggleSelect: {
+                    viewModel.toggleSelection(for: entry.path)
+                },
+                onPreview: {
+                    viewModel.previewURL = viewModel.archiveURL
+                }
+            )
+            .padding(.leading, CGFloat(depth) * 18)
+
+            if isExpanded, let children = entry.children {
+                ForEach(children) { child in
+                    EntryTreeNodeView(
+                        entry: child,
+                        depth: depth + 1,
+                        expandedPaths: $expandedPaths,
+                        viewModel: viewModel
+                    )
+                }
+            }
+        }
+    }
 }

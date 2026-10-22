@@ -11,11 +11,14 @@ public enum ArchiveSecurityError: LocalizedError, Equatable, Sendable {
     case forbiddenSymlinkTarget(target: String)
     case sanitizedPathEmpty(original: String)
     case invalidPassword
+    case unauthorized(reason: String)
     case corruptArchive(message: String)
     case unsupportedFormat(message: String)
 
     public var errorDescription: String? {
         switch self {
+        case .unauthorized(let reason):
+            return String(localized: "Authentication Error: \(reason)")
         case .zipSlipDetected(let path):
             return String(localized: "Security Alert: Path traversal attempt detected in entry '\(path)'. Extraction aborted to protect your device.")
         case .zipBombQuotaExceeded(let reason):

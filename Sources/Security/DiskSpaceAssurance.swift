@@ -22,9 +22,14 @@ public enum DiskSpaceAssurance {
                 .volumeAvailableCapacityKey
             ])
 
-            let available = values.volumeAvailableCapacityForImportantUsage
-                ?? values.volumeAvailableCapacity
-                ?? Int64.max
+            let available: Int64
+            if let important = values.volumeAvailableCapacityForImportantUsage {
+                available = important
+            } else if let regular = values.volumeAvailableCapacity {
+                available = Int64(regular)
+            } else {
+                available = Int64.max
+            }
 
             if available < totalNeeded {
                 throw ArchiveSecurityError.insufficientDiskSpace(

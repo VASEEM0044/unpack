@@ -3,7 +3,7 @@ import SwiftUI
 /// Root responsive navigation container supporting iPad sidebar (NavigationSplitView) and iPhone floating TabView.
 public struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var selectedTab: TabItem = .home
+    @State private var selectedTab: TabItem? = .home
 
     public enum TabItem: String, Hashable, CaseIterable {
         case home = "Home"
@@ -29,11 +29,14 @@ public struct ContentView: View {
                 }
                 .navigationTitle("Unpack")
             } detail: {
-                detailView(for: selectedTab)
+                detailView(for: selectedTab ?? .home)
             }
         } else {
             // iPhone TabView with Frosted Surface
-            TabView(selection: $selectedTab) {
+            TabView(selection: Binding(
+                get: { selectedTab ?? .home },
+                set: { selectedTab = $0 }
+            )) {
                 HomeView()
                     .tabItem {
                         Label("Home", systemImage: "archivebox.fill")
