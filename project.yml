@@ -6,6 +6,17 @@ options:
   createIntermediateGroups: true
   xcodeVersion: "16.0"
 
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
+  SWCompression:
+    url: https://github.com/tsolomko/SWCompression.git
+    from: 4.8.7
+  Unrar:
+    url: https://github.com/mtgto/Unrar.swift.git
+    from: 0.5.4
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -26,6 +37,12 @@ targets:
       - path: Sources
       - path: Configuration/Assets.xcassets
     dependencies:
+      - package: ZIPFoundation
+        product: ZIPFoundation
+      - package: SWCompression
+        product: SWCompression
+      - package: Unrar
+        product: Unrar
       - target: ShareExtension
     settings:
       base:

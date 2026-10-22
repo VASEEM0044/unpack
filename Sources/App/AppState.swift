@@ -12,12 +12,8 @@ public final class AppState {
     public init() {}
 
     public func handleIncomingURL(_ url: URL) {
-        let isScoped = url.startAccessingSecurityScopedResource()
-        defer {
-            if isScoped { url.stopAccessingSecurityScopedResource() }
-        }
-
-        // Add to recents and trigger browsing
-        deepLinkedArchiveURL = url
+        // Stage incoming file into local sandbox inbox so it retains full file access
+        let stagedURL = SecurityScopedFileManager.shared.stageArchiveForInspection(from: url)
+        deepLinkedArchiveURL = stagedURL
     }
 }

@@ -98,10 +98,45 @@ public final class SecurityScopedFileManager: @unchecked Sendable {
         }
     }
 
+    /// Staging directory for external archives opened from Files app, iCloud, or file picker.
+    public var inboxDirectory: URL {
+        let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let inbox = caches.appendingPathComponent("Inbox", isDirectory: true)
+        if !fileManager.fileExists(atPath: inbox.path) {
+            try? fileManager.createDirectory(at: inbox, withIntermediateDirectories: true)
+        }
+        return inbox
+    }
+
+    /// Safely copies an external security-scoped archive into the local sandbox inbox so it can be reliably opened and extracted.
+    public func stageArchiveForInspection(from sourceURL: URL) -> URL {
+        let isScoped = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if isScoped { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+
+        // If file is already inside app sandbox, return it directly
+        let homeDir = NSHomeDirectory()
+        if sourceURL.path.hasPrefix(homeDir) && fileManager.fileExists(atPath: sourceURL.path) {
+            return sourceURL
+        }
+
+        let destination = inboxDirectory.appendingPathComponent(sourceURL.lastPathComponent)
+        try? fileManager.removeItem(at: destination)
+        do {
+            try fileManager.copyItem(at: sourceURL, to: destination)
+            return destination
+        } catch {
+            print("Could not copy archive to inbox, falling back to source URL: \(error)")
+            return sourceURL
+        }
+    }
+
     private func createDefaultDirectoriesIfNeeded() {
         let dir = defaultExtractionDirectory
         if !fileManager.fileExists(atPath: dir.path) {
             try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         }
+        _ = inboxDirectory
     }
 }

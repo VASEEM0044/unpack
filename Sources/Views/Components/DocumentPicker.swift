@@ -30,6 +30,8 @@ public struct DocumentPicker: UIViewControllerRepresentable {
         switch mode {
         case .openArchives:
             contentTypes = [
+                .item,
+                .data,
                 .zip,
                 .archive,
                 UTType(importedAs: "com.rarlab.rar-archive"),
@@ -45,7 +47,7 @@ public struct DocumentPicker: UIViewControllerRepresentable {
             contentTypes = [.folder]
         }
 
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: false)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: mode == .openArchives)
         picker.allowsMultipleSelection = (mode == .selectFolder) ? false : allowsMultipleSelection
         picker.delegate = context.coordinator
         return picker

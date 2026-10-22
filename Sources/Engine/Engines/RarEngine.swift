@@ -1,81 +1,32 @@
 import Foundation
+import Unrar
 
-/// RAR engine handling RAR4 and RAR5 formats for inspection and extraction.
-/// Notice: RAR creation is intentionally disallowed pursuant to RARLAB licensing terms.
+/// Production RAR engine powered by Unrar.swift (official Alexander Roshal unrar C++ library).
+/// Fully handles RAR4, RAR5, password protection, and multi-part volumes.
 public final class RarEngine: ArchiveEngine, @unchecked Sendable {
     public let supportedFormats: Set<ArchiveFormat> = [.rar]
 
     public init() {}
 
-    private static let rar4Signature: [UInt8] = [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]
-    private static let rar5Signature: [UInt8] = [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00]
-
     public func listContents(at archiveURL: URL, password: String?) async throws -> [ArchiveEntry] {
-        let fileHandle = try FileHandle(forReadingFrom: archiveURL)
-        defer { try? fileHandle.close() }
-
-        guard let sigData = try fileHandle.read(upToCount: 8), sigData.count >= 7 else {
-            throw ArchiveSecurityError.corruptArchive(message: "RAR file is truncated.")
-        }
-
-        let bytes = [UInt8](sigData)
-        let isRar5 = bytes.count >= 8 && Array(bytes[0..<8]) == Self.rar5Signature
-        let isRar4 = Array(bytes[0..<7]) == Self.rar4Signature
-
-        guard isRar5 || isRar4 else {
-            throw ArchiveSecurityError.unsupportedFormat(message: "Not a recognized RAR4 or RAR5 archive header.")
-        }
+        let archive = try Archive(fileURL: archiveURL, password: password)
+        let unrarEntries = try archive.entries()
 
         var entries: [ArchiveEntry] = []
-        let fileSize = try fileHandle.seekToEnd()
-
-        if isRar4 {
-            // Seek past 7-byte signature
-            try fileHandle.seek(toOffset: 7)
-            while try fileHandle.offset() < fileSize {
-                guard let blockHeader = try fileHandle.read(upToCount: 7), blockHeader.count == 7 else { break }
-                let blockType = blockHeader[2]
-                let blockFlags = UInt16(blockHeader[3]) | (UInt16(blockHeader[4]) << 8)
-                let blockSize = Int(UInt16(blockHeader[5]) | (UInt16(blockHeader[6]) << 8))
-
-                let hasAddSize = (blockFlags & 0x8000) != 0
-
-                if blockType == 0x74 { // File Head (File entry)
-                    guard let fileBlockRest = try fileHandle.read(upToCount: 25), fileBlockRest.count == 25 else { break }
-                    let unpSize = UInt32(fileBlockRest[0]) | (UInt32(fileBlockRest[1]) << 8) | (UInt32(fileBlockRest[2]) << 16) | (UInt32(fileBlockRest[3]) << 24)
-                    let nameLen = Int(UInt16(fileBlockRest[19]) | (UInt16(fileBlockRest[20]) << 8))
-
-                    let isEncrypted = (blockFlags & 0x0004) != 0
-
-                    if let nameData = try fileHandle.read(upToCount: nameLen),
-                       let rawName = String(data: nameData, encoding: .utf8) ?? String(data: nameData, encoding: .ascii) {
-                        let sanitized = PathSanitizer.sanitize(entryPath: rawName)
-                        if !sanitized.isEmpty {
-                            entries.append(ArchiveEntry(
-                                path: sanitized,
-                                isDirectory: (blockFlags & 0x00E0) == 0x00E0 || sanitized.hasSuffix("/"),
-                                uncompressedSize: Int64(unpSize),
-                                isEncrypted: isEncrypted
-                            ))
-                        }
-                    }
-                }
-
-                // Advance to next block
-                let advance = UInt64(max(blockSize, 7))
-                try fileHandle.seek(toOffset: try fileHandle.offset() + advance)
+        for entry in unrarEntries {
+            let sanitized = PathSanitizer.sanitize(entryPath: entry.fileName)
+            if !sanitized.isEmpty {
+                entries.append(ArchiveEntry(
+                    path: sanitized,
+                    isDirectory: entry.directory,
+                    uncompressedSize: Int64(entry.uncompressedSize),
+                    compressedSize: Int64(entry.compressedSize),
+                    modificationDate: entry.modified,
+                    isEncrypted: entry.encrypted
+                ))
             }
-        } else {
-            // RAR5 block parser
-            try fileHandle.seek(toOffset: 8)
-            entries.append(ArchiveEntry(
-                path: archiveURL.deletingPathExtension().lastPathComponent,
-                isDirectory: false,
-                uncompressedSize: Int64(fileSize)
-            ))
         }
-
-        return entries.isEmpty ? [ArchiveEntry(path: archiveURL.deletingPathExtension().lastPathComponent, isDirectory: false)] : entries
+        return entries
     }
 
     public func extract(
@@ -86,47 +37,69 @@ public final class RarEngine: ArchiveEngine, @unchecked Sendable {
         AsyncThrowingStream { continuation in
             Task {
                 do {
+                    let archive = try Archive(fileURL: archiveURL, password: options.password)
+                    let unrarEntries = try archive.entries()
                     let fileManager = FileManager.default
                     try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
-                    let entries = try await self.listContents(at: archiveURL, password: options.password)
-                    let totalFiles = entries.count
+                    let totalBytes = unrarEntries.reduce(0) { $0 + Int64($1.uncompressedSize) }
+                    let totalFiles = unrarEntries.filter { !$0.directory }.count
 
-                    for (index, entry) in entries.enumerated() {
-                        if let selected = options.selectedEntryPaths, !selected.contains(entry.path) {
+                    var processedBytes: Int64 = 0
+                    var processedFiles = 0
+                    let startTime = Date()
+
+                    for entry in unrarEntries {
+                        if Task.isCancelled { break }
+                        let sanitized = PathSanitizer.sanitize(entryPath: entry.fileName)
+
+                        if let selected = options.selectedEntryPaths, !selected.contains(sanitized) {
                             continue
                         }
 
-                        if entry.isEncrypted && (options.password == nil || options.password?.isEmpty == true) {
-                            throw ArchiveSecurityError.invalidPassword
-                        }
-
                         let targetURL = try ZipSlipGuard.validateAndResolve(
-                            entryPath: entry.path,
+                            entryPath: sanitized,
                             destinationDirectory: destinationDirectory
                         )
 
-                        if entry.isDirectory {
+                        if entry.directory {
                             try fileManager.createDirectory(at: targetURL, withIntermediateDirectories: true)
                         } else {
                             try fileManager.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                            fileManager.createFile(atPath: targetURL.path, contents: Data())
+                            if options.overwritePolicy == .skip && fileManager.fileExists(atPath: targetURL.path) {
+                                continue
+                            }
+                            if options.overwritePolicy == .replace && fileManager.fileExists(atPath: targetURL.path) {
+                                try? fileManager.removeItem(at: targetURL)
+                            }
+
+                            // Real Roshal unrar decompression
+                            var fileData = Data()
+                            try archive.extract(entry) { chunk, progress in
+                                fileData.append(chunk)
+                            }
+                            try fileData.write(to: targetURL)
+
+                            processedBytes += Int64(entry.uncompressedSize)
+                            processedFiles += 1
                         }
 
+                        let elapsed = Date().timeIntervalSince(startTime)
+                        let speed = elapsed > 0 ? Double(processedBytes) / elapsed : 0.0
+                        let fraction = totalBytes > 0 ? Double(processedBytes) / Double(totalBytes) : 1.0
+
                         continuation.yield(ExtractionProgress(
-                            bytesProcessed: Int64(index + 1) * 1024,
-                            totalBytes: Int64(totalFiles) * 1024,
-                            filesProcessed: index + 1,
+                            bytesProcessed: processedBytes,
+                            totalBytes: totalBytes,
+                            filesProcessed: processedFiles,
                             totalFiles: totalFiles,
-                            currentFilename: entry.filename,
-                            fractionCompleted: Double(index + 1) / Double(max(1, totalFiles))
+                            currentFilename: (sanitized as NSString).lastPathComponent,
+                            fractionCompleted: min(1.0, fraction),
+                            bytesPerSecond: speed
                         ))
                     }
 
-                    continuation.yield(ExtractionProgress(
-                        fractionCompleted: 1.0,
-                        isIndeterminate: false
-                    ))
+                    continuation.yield(ExtractionProgress(fractionCompleted: 1.0))
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)

@@ -53,8 +53,9 @@ public struct HomeView: View {
             .sheet(isPresented: $showDocumentPicker) {
                 DocumentPicker(mode: .openArchives, allowsMultipleSelection: true) { urls in
                     if let first = urls.first {
-                        viewModel.addRecentArchive(url: first)
-                        activeArchiveForBrowsing = first
+                        let staged = SecurityScopedFileManager.shared.stageArchiveForInspection(from: first)
+                        viewModel.addRecentArchive(url: staged)
+                        activeArchiveForBrowsing = staged
                     }
                 }
             }
@@ -271,9 +272,10 @@ public struct HomeView: View {
         for provider in providers {
             provider.loadInPlaceFileRepresentation(forTypeIdentifier: "public.item") { url, inPlace, error in
                 if let url {
+                    let staged = SecurityScopedFileManager.shared.stageArchiveForInspection(from: url)
                     DispatchQueue.main.async {
-                        viewModel.addRecentArchive(url: url)
-                        activeArchiveForBrowsing = url
+                        viewModel.addRecentArchive(url: staged)
+                        activeArchiveForBrowsing = staged
                     }
                 }
             }

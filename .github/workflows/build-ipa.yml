@@ -25,11 +25,15 @@ jobs:
 
       - name: Install Tools
         run: |
-          brew install xcodegen
+          brew install xcodegen ldid || brew install xcodegen
 
       - name: Generate Xcode Project
         run: |
           xcodegen generate
+
+      - name: Resolve Swift Packages
+        run: |
+          xcodebuild -resolvePackageDependencies -project Unpack.xcodeproj -scheme Unpack
 
       - name: Build App for iOS (Device)
         run: |

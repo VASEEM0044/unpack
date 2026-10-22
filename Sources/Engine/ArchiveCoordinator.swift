@@ -13,9 +13,10 @@ public actor ArchiveCoordinator {
 
     /// Dispatches inspection to the engine matching the detected archive signature.
     public func inspect(archiveURL: URL, password: String? = nil) async throws -> (format: ArchiveFormat, entries: [ArchiveEntry]) {
-        let format = ArchiveFormat.detect(at: archiveURL)
+        let stagedURL = SecurityScopedFileManager.shared.stageArchiveForInspection(from: archiveURL)
+        let format = ArchiveFormat.detect(at: stagedURL)
         let engine = try resolveEngine(for: format)
-        let entries = try await engine.listContents(at: archiveURL, password: password)
+        let entries = try await engine.listContents(at: stagedURL, password: password)
         return (format, entries)
     }
 
@@ -28,11 +29,12 @@ public actor ArchiveCoordinator {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    let format = ArchiveFormat.detect(at: archiveURL)
+                    let stagedURL = SecurityScopedFileManager.shared.stageArchiveForInspection(from: archiveURL)
+                    let format = ArchiveFormat.detect(at: stagedURL)
                     let engine = try self.resolveEngine(for: format)
 
                     // 1. Inspect table of contents for security pre-flight
-                    let entries = try await engine.listContents(at: archiveURL, password: options.password)
+                    let entries = try await engine.listContents(at: stagedURL, password: options.password)
                     bombGuard.reset()
 
                     var totalRequiredBytes: Int64 = 0
@@ -47,7 +49,7 @@ public actor ArchiveCoordinator {
                     // 2. Compute destination folder (supporting subfolder creation if requested)
                     var targetDestination = options.destinationDirectory
                     if options.createSubfolder {
-                        let subfolderName = archiveURL.deletingPathExtension().lastPathComponent
+                        let subfolderName = stagedURL.deletingPathExtension().lastPathComponent
                         targetDestination = targetDestination.appendingPathComponent(subfolderName, isDirectory: true)
                     }
 
@@ -62,7 +64,7 @@ public actor ArchiveCoordinator {
                     adjustedOptions.destinationDirectory = targetDestination
 
                     let stream = engine.extract(
-                        from: archiveURL,
+                        from: stagedURL,
                         to: targetDestination,
                         options: adjustedOptions
                     )
