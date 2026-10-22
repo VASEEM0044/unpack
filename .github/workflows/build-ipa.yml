@@ -19,9 +19,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select Highest Xcode Version (Xcode 16 / Swift 6)
         run: |
-          sudo xcode-select -switch /Applications/Xcode_15.4.app/Contents/Developer
+          XCODE_APP=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode.app 2>/dev/null | head -n 1)
+          if [ -z "$XCODE_APP" ]; then
+            XCODE_APP=$(ls -d /Applications/Xcode_15*.app 2>/dev/null | head -n 1)
+          fi
+          echo "Selected Xcode: $XCODE_APP"
+          sudo xcode-select -switch "$XCODE_APP/Contents/Developer"
           xcodebuild -version
 
       - name: Install Tools
@@ -57,10 +62,9 @@ jobs:
 
           mkdir -p Payload
           cp -R "$APP_DIR" Payload/
-          
-          # Optional ad-hoc sign for broader compatibility with standard sideloaders (AltStore/SideStore)
-          # while keeping full TrollStore compatibility
-          if which ldid > /dev/null; then
+
+          # If ldid is available, ad-hoc sign for maximum compatibility
+          if which ldid > /dev/null 2>&1; then
             ldid -S Payload/Unpack.app
           fi
 
